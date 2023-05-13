@@ -366,6 +366,9 @@ freewalk_without_free_leaf(pagetable_t pagetable)
       freewalk_without_free_leaf((pagetable_t)child);
       pagetable[i] = 0;
     } 
+    else if(pte & PTE_V){
+      pagetable[i] = 0;
+    }
   }
   kfree((void*)pagetable);
 }
