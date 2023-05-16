@@ -111,6 +111,9 @@ exec(char *path, char **argv)
   // Commit to the user image.
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;
+  if(sz > 0)
+    uvmunmap(p->k_pagetable, 0, p->sz/PGSIZE, 0);
+  k_uvmcopy(p->pagetable , p->k_pagetable, 0, sz);
   p->sz = sz;
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
