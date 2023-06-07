@@ -5,9 +5,13 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "fcntl.h"
 
 struct cpu cpus[NCPU];
-
+struct file;
 struct proc proc[NPROC];
 
 struct proc *initproc;
@@ -133,7 +137,7 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
-
+  memset(&p->vmaa, 0, sizeof(p->vmaa));
   return p;
 }
 
@@ -273,12 +277,24 @@ fork(void)
   if((np = allocproc()) == 0){
     return -1;
   }
-
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
+  }
+  for(int i=0;i<16;++i){
+    if(p->vmaa[i].valid==1){
+      np->vmaa[i].addr=p->vmaa[i].addr;
+      np->vmaa[i].length=p->vmaa[i].length;
+      np->vmaa[i].prot=p->vmaa[i].prot;
+      np->vmaa[i].flags=p->vmaa[i].flags;
+      np->vmaa[i].fd=p->vmaa[i].fd;
+      np->vmaa[i].offset=p->vmaa[i].offset;
+      np->vmaa[i].filep=p->vmaa[i].filep;
+      np->vmaa[i].valid=1;
+      filedup(np->vmaa[i].filep);
+    }
   }
   np->sz = p->sz;
 
@@ -350,6 +366,23 @@ exit(int status)
       struct file *f = p->ofile[fd];
       fileclose(f);
       p->ofile[fd] = 0;
+    }
+  }
+  
+  for(int i=0;i<16;++i){
+    if(p->vmaa[i].valid){
+      if(p->vmaa[i].flags==MAP_SHARED){
+        // begin_op();
+        // ilock(p->vmaa[i].filep->ip);
+
+        // if(writei(p->vmaa[i].filep->ip,  1, p->vmaa[i].addr, p->vmaa[i].offset,  p->vmaa[i].length)<p->vmaa[i].length)
+        //   panic("ggggggg");
+        // iunlock(p->vmaa[i].filep->ip);
+        filewrite(p->vmaa[i].filep, p->vmaa[i].addr, p->vmaa[i].length);
+        // end_op();
+      }
+      fileclose(p->vmaa[i].filep);
+      p->vmaa[i].valid=0;
     }
   }
 

@@ -484,3 +484,93 @@ sys_pipe(void)
   }
   return 0;
 }
+uint64 sys_mmap(void){
+  struct file *filep;
+  uint64 addr,length, offset;
+  int prot, flags, fd;
+  uint64 fail = 0xffffffffffffffff;
+   if(argaddr(0, &addr) < 0 || argaddr(1, &length) < 0 || argint(2, &prot) < 0
+    || argint(3, &flags) < 0 || argfd(4, &fd, &filep) < 0 || argaddr(5, &offset) < 0)
+    return fail;
+  int i=0;
+  struct proc* p = myproc();
+  for(;i<16;++i){
+    if(p->vmaa[i].valid==0)break;
+  }
+  if(i==16)
+    return fail;
+  if(filep->writable == 0 && (prot & PROT_WRITE) != 0 && flags == MAP_SHARED)
+    return fail;
+  length=PGROUNDUP(length);
+  p->vmaa[i].addr=p->sz;
+  p->vmaa[i].length=length;
+  p->vmaa[i].prot=prot;
+  p->vmaa[i].flags=flags;
+  p->vmaa[i].fd=fd;
+  p->vmaa[i].offset=offset;
+  p->vmaa[i].filep=filep;
+  p->vmaa[i].valid=1;
+  p->sz+=length;
+  filedup(filep);
+  return p->vmaa[i].addr;
+}
+uint64 sys_munmap(void){
+  struct proc* p = myproc();
+  uint64 addr,length;
+  uint64 fail = 0xffffffffffffffff;
+  if(argaddr(0, &addr) < 0 || argaddr(1, &length) < 0 )
+    return fail;
+  int i=0;
+  for(;i<16;++i){
+    if(p->vmaa[i].valid && p->vmaa[i].addr == addr 
+      && length <= p->vmaa[i].length)
+      break;
+  }
+  if(i==16)
+    return fail;
+  if(p->vmaa[i].flags==MAP_SHARED){
+    begin_op();
+    ilock(p->vmaa[i].filep->ip);
+    writei(p->vmaa[i].filep->ip,  1, addr, p->vmaa[i].offset,  length);
+    iunlock(p->vmaa[i].filep->ip);
+    end_op();
+  }
+  p->vmaa[i].length-=length;
+  p->vmaa[i].addr += length;
+  
+  if(p->vmaa[i].length == 0) {
+    p->vmaa[i].valid=0;
+    fileclose(p->vmaa[i].filep);
+    
+    }
+  
+  uvmunmap(p->pagetable, addr, length/PGSIZE, 1);
+  return 0;
+}
+int mmap(uint64 va){
+  struct proc* p = myproc();
+  int i=0;
+  for(;i<16;++i){
+    if(p->vmaa[i].valid && p->vmaa[i].addr <= va 
+      && va < p->vmaa[i].addr+p->vmaa[i].length)
+      break;
+  }
+  if(i==16)
+    return 0;
+  uint64 pa;
+  if((pa = (uint64)kalloc()) == 0)return 0;
+  memset((void*)pa, 0, PGSIZE);
+  int flags = PTE_U;
+  flags |= p->vmaa[i].prot & PROT_READ ? PTE_R:0;
+  flags |= p->vmaa[i].prot & PROT_WRITE ? PTE_W:0;
+  flags |= p->vmaa[i].prot & PROT_EXEC ? PTE_X:0;
+  if(mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)pa,flags) != 0) {
+    kfree((void*)pa);
+    return 0;
+  }
+  int offset = p->vmaa[i].offset + PGROUNDDOWN(va - p->vmaa[i].addr);
+  ilock(p->vmaa[i].filep->ip);
+  readi(p->vmaa[i].filep->ip,  0, (uint64)pa, offset,  PGSIZE);
+  iunlock(p->vmaa[i].filep->ip);
+  return 1;
+}
