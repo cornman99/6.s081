@@ -501,7 +501,7 @@ uint64 sys_mmap(void){
     return fail;
   if(filep->writable == 0 && (prot & PROT_WRITE) != 0 && flags == MAP_SHARED)
     return fail;
-  length=PGROUNDUP(length);
+  // length=PGROUNDUP(length);
   p->vmaa[i].addr=p->sz;
   p->vmaa[i].length=length;
   p->vmaa[i].prot=prot;
@@ -529,13 +529,15 @@ uint64 sys_munmap(void){
   if(i==16)
     return fail;
   if(p->vmaa[i].flags==MAP_SHARED){
-    begin_op();
-    ilock(p->vmaa[i].filep->ip);
-    writei(p->vmaa[i].filep->ip,  1, addr, p->vmaa[i].offset,  length);
-    iunlock(p->vmaa[i].filep->ip);
-    end_op();
+    // begin_op();
+    // ilock(p->vmaa[i].filep->ip);
+    // writei(p->vmaa[i].filep->ip,  1, addr, p->vmaa[i].offset,  length);
+    // iunlock(p->vmaa[i].filep->ip);
+    // end_op();
+    filewb(i,length);
   }
   p->vmaa[i].length-=length;
+  p->vmaa[i].offset += length;
   p->vmaa[i].addr += length;
   
   if(p->vmaa[i].length == 0) {

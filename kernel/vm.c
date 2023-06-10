@@ -5,7 +5,11 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
-
+#include "fcntl.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "proc.h"
 /*
  * the kernel's page table.
  */
@@ -376,8 +380,11 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
   while(len > 0){
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
+    if(pa0 == 0){
+      printf("gg");
       return -1;
+    }
+      
     n = PGSIZE - (srcva - va0);
     if(n > len)
       n = len;
@@ -430,5 +437,33 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return 0;
   } else {
     return -1;
+  }
+}
+void filewb(int tar, uint64 len){
+
+  pte_t *pte;
+  struct proc* p = myproc();
+  uint64 a=p->vmaa[tar].addr;
+  for(; a < p->vmaa[tar].addr + len; a += PGSIZE){
+    if((pte = walk(p->pagetable, a, 0)) == 0)
+      continue;
+      // panic("uvmunmap: walk");
+    if((*pte & PTE_V) == 0)
+      continue;
+      // panic("uvmunmap: not mapped");
+    if(PTE_FLAGS(*pte) == PTE_V)
+      panic("uvmunmap: not a leaf");
+
+    uint64 pa = PTE2PA(*pte);
+    if(pa==0){
+      continue;
+    }
+    begin_op();
+    ilock(p->vmaa[tar].filep->ip);
+    int off=p->vmaa[tar].offset+ PGROUNDDOWN(a - p->vmaa[tar].addr);
+    writei(p->vmaa[tar].filep->ip,  0, pa,off, PGSIZE);
+    iunlock(p->vmaa[tar].filep->ip);
+    end_op();
+
   }
 }

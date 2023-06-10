@@ -372,14 +372,8 @@ exit(int status)
   for(int i=0;i<16;++i){
     if(p->vmaa[i].valid){
       if(p->vmaa[i].flags==MAP_SHARED){
-        // begin_op();
-        // ilock(p->vmaa[i].filep->ip);
+        filewb(i,p->vmaa[i].length);
 
-        // if(writei(p->vmaa[i].filep->ip,  1, p->vmaa[i].addr, p->vmaa[i].offset,  p->vmaa[i].length)<p->vmaa[i].length)
-        //   panic("ggggggg");
-        // iunlock(p->vmaa[i].filep->ip);
-        filewrite(p->vmaa[i].filep, p->vmaa[i].addr, p->vmaa[i].length);
-        // end_op();
       }
       fileclose(p->vmaa[i].filep);
       p->vmaa[i].valid=0;
